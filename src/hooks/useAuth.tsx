@@ -47,37 +47,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     checkAuth();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    setLoading(true);
-    try {
-      const user = await authenticateUser(email, password);
-      
-      // Ensure the user object has id as a string
-      const userWithStringId = {
-        ...user,
-        id: user.id.toString()
-      };
-      
-      localStorage.setItem("user", JSON.stringify(userWithStringId));
-      setUser(userWithStringId);
+  // Dans useAuth.tsx - fonction login modifiée
+const login = async (email: string, password: string) => {
+  setLoading(true);
+  try {
+    const response = await authenticateUser(email, password);
+    
+    // S'assurer que le token est bien stocké
+    if (response && response.access_token) {
+      localStorage.setItem("user", JSON.stringify(response.user));
+      localStorage.setItem("token", response.access_token);
+      setUser(response.user);
       
       toast({
         title: "Connexion réussie",
         description: "Bienvenue sur l'IA Ticket Wizard",
       });
       
-      navigate(user.isAdmin ? "/admin" : "/dashboard");
-    } catch (error) {
-      toast({
-        title: "Erreur de connexion",
-        description: "Email ou mot de passe incorrect",
-        variant: "destructive",
-      });
-      console.error("Login error:", error);
-    } finally {
-      setLoading(false);
+      navigate(response.user.isAdmin ? "/admin" : "/dashboard");
+    } else {
+      throw new Error("Réponse d'authentification invalide");
     }
-  };
+  } catch (error) {
+    toast({
+      title: "Erreur de connexion",
+      description: "Email ou mot de passe incorrect",
+      variant: "destructive",
+    });
+    console.error("Login error:", error);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
   
   const signup = async (username: string, email: string, password: string) => {
     setLoading(true);

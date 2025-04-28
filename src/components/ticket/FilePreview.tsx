@@ -1,10 +1,9 @@
 
-import { FileSpreadsheet, X } from "lucide-react";
+import { FileSpreadsheet, X, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-
 interface FilePreviewProps {
   file: File;
   onRemove: () => void;

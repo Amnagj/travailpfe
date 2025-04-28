@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export function SearchHistory() {
-  const { history, deleteFromHistory, clearHistory } = useSearchHistory();
+  const { history, deleteFromHistory, clearHistory, loading } = useSearchHistory();
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [selectedId, setSelectedId] = useState<string | null>(null);

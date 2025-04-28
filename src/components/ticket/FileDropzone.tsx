@@ -23,9 +23,8 @@ export const FileDropzone = ({ onFileAccepted }: FileDropzoneProps) => {
       const fileName = selectedFile.name.toLowerCase();
       
       if (
-        fileName.endsWith('.xlsx') ||
-        fileName.endsWith('.xls') ||
-        fileName.endsWith('.csv')
+        fileName.endsWith('.xlsx') 
+
       ) {
         onFileAccepted(selectedFile);
         toast({

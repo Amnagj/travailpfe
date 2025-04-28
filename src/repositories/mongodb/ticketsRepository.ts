@@ -1,5 +1,5 @@
-
 import { connectToMongoDB } from "@/api/mongodb";
+import { MongoClient, Db } from 'mongodb'; // Ajout des imports nécessaires
 
 export interface Ticket {
   _id: string;
@@ -10,21 +10,35 @@ export interface Ticket {
   updated_at: Date;
 }
 
+// Définir le nom de la base de données
+const DB_NAME = "Access";
+
 export const ticketsRepository = {
   async findSimilarTickets(ticketText: string): Promise<Ticket[]> {
-    const mongo = await connectToMongoDB();
+    let client: MongoClient | null = null;
     try {
-      const collection = mongo.db().collection('tickets');
-      return await collection.find().toArray() as Ticket[];
+      client = await connectToMongoDB() as MongoClient;
+      const db: Db = client.db(DB_NAME);
+      const collection = db.collection('tickets');
+      return (await collection.find().toArray()).map(doc => ({
+        _id: doc._id.toString(),
+        problem: doc.problem,
+        solution: doc.solution,
+        keywords: doc.keywords,
+        created_at: doc.created_at,
+        updated_at: doc.updated_at
+      })) as Ticket[];
     } finally {
-      await mongo.close();
+      if (client) await client.close();
     }
   },
-
+  
   async saveTicket(ticket: Omit<Ticket, '_id' | 'created_at' | 'updated_at'>): Promise<Ticket> {
-    const mongo = await connectToMongoDB();
+    let client: MongoClient | null = null;
     try {
-      const collection = mongo.db().collection('tickets');
+      client = await connectToMongoDB() as MongoClient;
+      const db: Db = client.db(DB_NAME);
+      const collection = db.collection('tickets');
       const now = new Date();
       const newTicket = {
         ...ticket,
@@ -32,10 +46,12 @@ export const ticketsRepository = {
         updated_at: now
       };
       const result = await collection.insertOne(newTicket);
-      return { ...newTicket, _id: result.insertedId } as Ticket;
+      return { 
+        ...newTicket, 
+        _id: result.insertedId.toString() 
+      } as Ticket;
     } finally {
-      await mongo.close();
+      if (client) await client.close();
     }
   }
 };
-

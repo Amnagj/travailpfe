@@ -1,9 +1,10 @@
-
 import { connectToMongoDB } from "@/api/mongodb";
 import * as crypto from 'crypto';
+import { MongoClient, Db, ObjectId } from 'mongodb';
 
+// Modifier l'interface pour utiliser ObjectId pour _id
 export interface User {
-  _id: string;
+  _id: string | ObjectId;  // Permet les deux types pour la compatibilité
   username: string;
   email: string;
   password: string;
@@ -43,55 +44,58 @@ export const usersRepository = {
     return crypto.createHash('sha256').update(password).digest('hex');
   },
 
-  // Trouver un utilisateur par son email
-  async findByEmail(email: string): Promise<User | null> {
-    const mongo = await connectToMongoDB();
-    try {
-      const collection = mongo.db().collection('users');
-      return await collection.findOne({ email }) as User | null;
-    } finally {
-      await mongo.close();
-    }
-  },
-
-  // Trouver un utilisateur par son ID
   async findById(id: string): Promise<User | null> {
-    const mongo = await connectToMongoDB();
+    let client: MongoClient | null = null;
     try {
-      const collection = mongo.db().collection('users');
-      return await collection.findOne({ _id: id }) as User | null;
+      client = await connectToMongoDB() as MongoClient;
+      const db: Db = client.db("Access");
+      const collection = db.collection('Users');
+      
+      // Vérifier si l'id peut être converti en ObjectId (24 caractères hexadécimaux)
+      let query = {};
+      if (ObjectId.isValid(id) && id.match(/^[0-9a-fA-F]{24}$/)) {
+        query = { _id: new ObjectId(id) };
+      } else {
+        query = { _id: id };
+      }
+      
+      const user = await collection.findOne(query);
+      return user ? user as unknown as User : null;
     } finally {
-      await mongo.close();
+      if (client) await client.close();
     }
   },
 
-  // Lister tous les utilisateurs
   async findAll(): Promise<UserOutput[]> {
-    const mongo = await connectToMongoDB();
+    let client: MongoClient | null = null;
     try {
-      const collection = mongo.db().collection('users');
-      const users = await collection.find().toArray() as User[];
+      client = await connectToMongoDB() as MongoClient;
+      const db: Db = client.db("Access");
+      const collection = db.collection('Users');
       
+      const users = await collection.find().toArray();
       return users.map(user => ({
-        id: user._id,
+        id: typeof user._id === 'object' && user._id !== null ? user._id.toString() : String(user._id),
         username: user.username,
         email: user.email,
         isAdmin: user.isAdmin,
         createdAt: user.createdAt.toISOString()
       }));
     } finally {
-      await mongo.close();
+      if (client) await client.close();
     }
   },
 
   // Créer un nouvel utilisateur
   async create(userData: NewUserInput): Promise<UserOutput> {
-    const mongo = await connectToMongoDB();
+    let client: MongoClient | null = null;
     try {
-      // Vérifier si l'utilisateur existe déjà
-      const collection = mongo.db().collection('users');
-      const existingUser = await collection.findOne({ email: userData.email });
+      client = await connectToMongoDB() as MongoClient;
+      const db: Db = client.db("Access");
+      const collection = db.collection('Users');
       
+      // Vérifier si l'utilisateur existe déjà
+      const existingUser = await collection.findOne({ email: userData.email });
       if (existingUser) {
         throw new Error(`Un utilisateur avec l'email ${userData.email} existe déjà`);
       }
@@ -99,10 +103,13 @@ export const usersRepository = {
       // Générer un mot de passe si non fourni
       const password = userData.password || this.generatePassword();
       const hashedPassword = this.hashPassword(password);
-      
       const now = new Date();
+      
+      // Vous pouvez continuer à utiliser des chaînes personnalisées comme ID
+      const customId = `user_${Date.now()}`;
+      
       const newUser: User = {
-        _id: `user_${Date.now()}`,
+        _id: customId,
         username: userData.username,
         email: userData.email,
         password: hashedPassword,
@@ -111,47 +118,66 @@ export const usersRepository = {
         updatedAt: now
       };
       
-      await collection.insertOne(newUser);
-      
+      await collection.insertOne(newUser as any);
       return {
-        id: newUser._id,
+        id: customId,
         username: newUser.username,
         email: newUser.email,
         isAdmin: newUser.isAdmin,
         createdAt: newUser.createdAt.toISOString()
       };
     } finally {
-      await mongo.close();
+      if (client) await client.close();
     }
   },
 
   // Supprimer un utilisateur
   async delete(id: string): Promise<boolean> {
-    const mongo = await connectToMongoDB();
+    let client: MongoClient | null = null;
     try {
-      const collection = mongo.db().collection('users');
-      const result = await collection.deleteOne({ _id: id });
+      client = await connectToMongoDB() as MongoClient;
+      const db: Db = client.db("Access");
+      const collection = db.collection('Users');
+      
+      // Même logique que pour findById
+      let query = {};
+      if (ObjectId.isValid(id) && id.match(/^[0-9a-fA-F]{24}$/)) {
+        query = { _id: new ObjectId(id) };
+      } else {
+        query = { _id: id };
+      }
+      
+      const result = await collection.deleteOne(query);
       return result.deletedCount === 1;
     } finally {
-      await mongo.close();
+      if (client) await client.close();
     }
   },
 
   // Mettre à jour un utilisateur
   async update(id: string, updates: Partial<Omit<User, '_id' | 'createdAt'>>): Promise<UserOutput | null> {
-    const mongo = await connectToMongoDB();
+    let client: MongoClient | null = null;
     try {
-      const collection = mongo.db().collection('users');
+      client = await connectToMongoDB() as MongoClient;
+      const db: Db = client.db("Access");
+      const collection = db.collection('Users');
       
       // Si le mot de passe est fourni, le hacher
       if (updates.password) {
         updates.password = this.hashPassword(updates.password);
       }
-      
       updates.updatedAt = new Date();
       
+      // Même logique que précédemment
+      let query = {};
+      if (ObjectId.isValid(id) && id.match(/^[0-9a-fA-F]{24}$/)) {
+        query = { _id: new ObjectId(id) };
+      } else {
+        query = { _id: id };
+      }
+      
       const result = await collection.updateOne(
-        { _id: id },
+        query,
         { $set: updates }
       );
       
@@ -159,16 +185,18 @@ export const usersRepository = {
         return null;
       }
       
-      const updatedUser = await collection.findOne({ _id: id }) as User;
+      const updatedUser = await collection.findOne(query);
+      if (!updatedUser) return null;
+      
       return {
-        id: updatedUser._id,
+        id: typeof updatedUser._id === 'object' && updatedUser._id !== null ? updatedUser._id.toString() : String(updatedUser._id),
         username: updatedUser.username,
         email: updatedUser.email,
         isAdmin: updatedUser.isAdmin,
         createdAt: updatedUser.createdAt.toISOString()
       };
     } finally {
-      await mongo.close();
+      if (client) await client.close();
     }
   }
 };

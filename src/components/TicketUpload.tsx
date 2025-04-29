@@ -8,8 +8,15 @@ import { TicketInstructions } from "./TicketInstructions";
 import { useSearchHistory } from "@/hooks/useSearchHistory";
 import { useToast } from "@/hooks/use-toast";
 import { validateExcelFormat, uploadExcelFile } from '../api/fastApiService';
+import * as XLSX from 'xlsx';
 
-export const TicketUpload = ({ onFileUploaded }: { onFileUploaded: (text: string, ticketIds?: string[]) => void }) => {
+export const TicketUpload = ({ 
+  onFileUploaded, 
+  onTicketDataExtracted 
+}: { 
+  onFileUploaded: (text: string, ticketIds?: string[]) => void,
+  onTicketDataExtracted: (data: Record<string, any> | null, loading: boolean) => void
+}) => {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -19,15 +26,91 @@ export const TicketUpload = ({ onFileUploaded }: { onFileUploaded: (text: string
   const { addToHistory } = useSearchHistory();
   const isDark = theme === "dark";
 
-  // Validation du fichier Excel
+  // Dans la fonction extractExcelData, améliorons l'extraction des données
+  const extractExcelData = async (file: File) => {
+    try {
+      onTicketDataExtracted(null, true); // Indiquer que le chargement commence
+
+      return new Promise<Record<string, any>>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = e.target?.result;
+            if (!data) {
+              reject("Impossible de lire le fichier");
+              return;
+            }
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // Convertir toutes les données en JSON
+            const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet);
+            
+            if (jsonData.length > 0) {
+              // Extraire les champs importants de la première ligne
+              const ticketData = jsonData[0];
+              
+              // Nettoyer et formater les données
+              const cleanedData: Record<string, any> = {};
+              Object.entries(ticketData).forEach(([key, value]) => {
+                // Ignorer les valeurs null, undefined ou vides
+                if (value !== null && value !== undefined && value !== '') {
+                  // Convertir les nombres et dates en chaînes pour l'affichage
+                  if (typeof value === 'number' || value instanceof Date) {
+                    cleanedData[key] = String(value);
+                  } else {
+                    cleanedData[key] = value;
+                  }
+                }
+              });
+              
+              resolve(cleanedData);
+            } else {
+              reject("Aucune donnée trouvée dans le fichier Excel");
+            }
+          } catch (error) {
+            console.error("Erreur lors de l'extraction des données Excel:", error);
+            reject(error);
+          }
+        };
+        reader.onerror = (error) => {
+          reject(error);
+        };
+        reader.readAsBinaryString(file);
+      });
+    } catch (error) {
+      console.error("Erreur lors de l'extraction des données:", error);
+      onTicketDataExtracted(null, false);
+      return null;
+    }
+  };
+
+  // Modifier la fonction validateAndUpload pour mieux gérer les données extraites
   const validateAndUpload = async () => {
     if (!file) return;
+    
     try {
+      // Extraire les données du ticket pour l'affichage
+      try {
+        const ticketData = await extractExcelData(file);
+        if (ticketData) {
+          // Transmettre les données extraites au composant parent
+          onTicketDataExtracted(ticketData, true);
+          
+          // Ajouter un message dans la console pour debug
+          console.log("Données du ticket extraites:", ticketData);
+        }
+      } catch (error) {
+        console.error("Erreur lors de l'extraction des données du ticket:", error);
+      }
+      
       // Valider le format du fichier Excel
       const validation = await validateExcelFormat(file);
       if (validation.isValid) {
         handleUpload();
       } else {
+        onTicketDataExtracted(null, false);
         toast({
           title: "Format incorrect",
           description: validation.message,
@@ -36,6 +119,7 @@ export const TicketUpload = ({ onFileUploaded }: { onFileUploaded: (text: string
       }
     } catch (error) {
       console.error("Error validating file:", error);
+      onTicketDataExtracted(null, false);
       toast({
         title: "Erreur de validation",
         description: "Impossible de valider le format du fichier.",
@@ -49,9 +133,7 @@ export const TicketUpload = ({ onFileUploaded }: { onFileUploaded: (text: string
     if (!file) return;
     setUploading(true);
     setProgress(0);
-    
     let progressInterval: NodeJS.Timeout;
-    
     try {
       progressInterval = setInterval(() => {
         setProgress(prev => {
@@ -62,14 +144,15 @@ export const TicketUpload = ({ onFileUploaded }: { onFileUploaded: (text: string
           return prev + 10;
         });
       }, 500);
-      
+
       // Envoyer le fichier au backend via l'API
       const response = await uploadExcelFile(file);
-      
+
       if (response.status === "success") {
         clearInterval(progressInterval);
         setProgress(100);
-        
+        onTicketDataExtracted(null, false); // Arrêter l'affichage des détails
+
         // Traiter la réponse pour obtenir les tickets similaires
         if (response.tickets && response.tickets.length > 0) {
           const ticketIds = response.tickets.map(t => t.ticket_id);
@@ -82,9 +165,10 @@ J'ai trouvé une solution pour votre ticket!
 `;
           toast({
             title: "Solution trouvée",
-            description: `Une solution a été trouvée avec un score de similarité de ${(bestMatch.similarity_score * 100).toFixed(1)}%`,
+            description: `Une solution a été trouvée avec un score de similarité de 
+${(bestMatch.similarity_score * 100).toFixed(1)}%`,
           });
-          
+
           // Ajouter à l'historique si l'utilisateur est connecté
           if (localStorage.getItem('token')) {
             addToHistory({
@@ -105,10 +189,12 @@ J'ai trouvé une solution pour votre ticket!
         setTimeout(() => setProgress(0), 1000);
         setUploading(false);
       } else {
+        onTicketDataExtracted(null, false);
         throw new Error(response.message || "Erreur lors du traitement du fichier");
       }
     } catch (error) {
       console.error("Error processing file:", error);
+      onTicketDataExtracted(null, false);
       toast({
         title: "Erreur de traitement",
         description: "Une erreur est survenue lors du traitement du fichier.",
@@ -147,8 +233,11 @@ J'ai trouvé une solution pour votre ticket!
         ) : (
           <FilePreview
             file={file}
-            onRemove={() => setFile(null)}
-            onUpload={validateAndUpload} // Utilisez validateAndUpload ici au lieu de handleUpload directement
+            onRemove={() => {
+              setFile(null);
+              onTicketDataExtracted(null, false);
+            }}
+            onUpload={validateAndUpload}
             uploading={uploading}
           />
         )}

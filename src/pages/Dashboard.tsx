@@ -1,8 +1,8 @@
-
 import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { TicketUpload } from "@/components/TicketUpload";
 import { ChatInterface } from "@/components/ChatInterface";
+import { TicketDetails } from "@/components/TicketsDetails";
 import StarfieldBackground from "@/components/StarfieldBackground";
 import { CosmicElements, GlowingOrb } from "@/components/CosmicElements";
 import { motion } from "framer-motion";
@@ -13,6 +13,9 @@ import { SearchHistory } from "@/components/SearchHistory";
 const Dashboard = () => {
   const [initialMessage, setInitialMessage] = useState<string | undefined>();
   const [ticketIds, setTicketIds] = useState<string[] | undefined>();
+  const [ticketData, setTicketData] = useState<Record<string, any> | null>(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  
   const { theme } = useTheme();
   const isDark = theme === "dark";
   
@@ -20,12 +23,23 @@ const Dashboard = () => {
     setInitialMessage(message);
     setTicketIds(ids);
   };
-
+  
+  const handleTicketDataExtracted = (data: Record<string, any> | null, loading: boolean) => {
+    setTicketData(data);
+    setLoadingAnalysis(loading);
+    
+    // Si nous avons des données de ticket et que l'analyse est en cours,
+    // nous pouvons afficher un message explicatif
+    if (data && loading) {
+      console.log("Données du ticket en cours d'analyse:", data);
+    }
+  }
+  
   const containerVariants = {
     hidden: { opacity: 0 },
-    visible: { 
+    visible: {
       opacity: 1,
-      transition: { 
+      transition: {
         staggerChildren: 0.1,
         delayChildren: 0.2
       }
@@ -34,8 +48,8 @@ const Dashboard = () => {
   
   const itemVariants = {
     hidden: { y: 20, opacity: 0 },
-    visible: { 
-      y: 0, 
+    visible: {
+      y: 0,
       opacity: 1,
       transition: { duration: 0.5, ease: "easeOut" }
     }
@@ -46,9 +60,8 @@ const Dashboard = () => {
       {isDark && <StarfieldBackground />}
       {isDark && <CosmicElements />}
       <Navbar />
-      
       <main className="container mx-auto pt-16 px-4 relative z-10 pb-10">
-        <motion.div 
+        <motion.div
           className="mx-auto"
           variants={containerVariants}
           initial="hidden"
@@ -71,7 +84,7 @@ const Dashboard = () => {
             >
               <SearchHistory />
             </motion.div>
-            
+
             {/* Section principale */}
             <motion.div
               variants={itemVariants}
@@ -80,8 +93,8 @@ const Dashboard = () => {
               <motion.div variants={itemVariants}>
                 <div className={cn(
                   "mb-4 p-4 rounded-xl border",
-                  isDark 
-                    ? "bg-card/20 border-white/10" 
+                  isDark
+                    ? "bg-card/20 border-white/10"
                     : "bg-white border-gray-200"
                 )}>
                   <h2 className={cn(
@@ -90,17 +103,38 @@ const Dashboard = () => {
                   )}>
                     Importer votre ticket
                   </h2>
-                  <TicketUpload onFileUploaded={handleFileUploaded} />
+                  <TicketUpload 
+                    onFileUploaded={handleFileUploaded} 
+                    onTicketDataExtracted={handleTicketDataExtracted} 
+                  />
                 </div>
               </motion.div>
-              
+
+              {/* Affichage des détails du ticket pendant l'analyse */}
+              {(loadingAnalysis || ticketData) && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="mb-4"
+                >
+                  <TicketDetails 
+                    ticketData={ticketData} 
+                    loading={loadingAnalysis} 
+                  />
+                </motion.div>
+              )}
+
               {initialMessage && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5 }}
                 >
-                  <ChatInterface initialMessage={initialMessage} ticketIds={ticketIds} />
+                  <ChatInterface 
+                    initialMessage={initialMessage} 
+                    ticketIds={ticketIds} 
+                  />
                 </motion.div>
               )}
             </motion.div>

@@ -1,7 +1,11 @@
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 
 // Base URL for our FastAPI backend
 const API_BASE_URL = 'http://localhost:8000';
+
+
+
 
 // Interface for the ticket search response
 interface TicketSearchResponse {
@@ -314,6 +318,89 @@ export async function telecharger(file: File): Promise<TicketImportResponse> {
     return {
       status: 'error',
       message: 'Une erreur est survenue lors du téléchargement du fichier.'
+    };
+  }
+}
+// Ajouter cette interface pour l'extraction des données du ticket
+interface ExcelDataExtractionResponse {
+  status: 'success' | 'error';
+  message: string;
+  ticket_data?: Record<string, any>;
+}
+
+/**
+ * Extrait les données d'un fichier Excel pour prévisualisation
+ */
+export async function extractTicketDataFromExcel(file: File): Promise<ExcelDataExtractionResponse> {
+  try {
+    return new Promise<ExcelDataExtractionResponse>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = e.target?.result;
+          if (!data) {
+            reject({
+              status: 'error',
+              message: 'Impossible de lire le fichier'
+            });
+            return;
+          }
+          
+          // Utiliser XLSX pour lire le fichier
+          const workbook = XLSX.read(data, { type: 'binary' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          
+          // Convertir les données en JSON
+          const rows = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet);
+          
+          if (rows.length > 0) {
+            // Extraire la première ligne comme données du ticket
+            const ticketData = rows[0];
+            
+            // Nettoyer et formater les données
+            const cleanedData: Record<string, any> = {};
+            Object.entries(ticketData).forEach(([key, value]) => {
+              if (value !== null && value !== undefined && value !== '') {
+                // Convertir les valeurs non-string en string pour l'affichage
+                cleanedData[key] = String(value);
+              }
+            });
+            
+            resolve({
+              status: 'success',
+              message: 'Données extraites avec succès',
+              ticket_data: cleanedData
+            });
+          } else {
+            resolve({
+              status: 'error',
+              message: 'Aucune donnée trouvée dans le fichier'
+            });
+          }
+        } catch (error) {
+          console.error('Erreur lors de l\'extraction des données Excel:', error);
+          reject({
+            status: 'error',
+            message: `Erreur lors de l'extraction: ${error}`
+          });
+        }
+      };
+      
+      reader.onerror = (error) => {
+        reject({
+          status: 'error',
+          message: `Erreur de lecture du fichier: ${error}`
+        });
+      };
+      
+      reader.readAsBinaryString(file);
+    });
+  } catch (error) {
+    console.error('Error extracting ticket data:', error);
+    return {
+      status: 'error',
+      message: 'Une erreur est survenue lors de l\'extraction des données du ticket.'
     };
   }
 }
